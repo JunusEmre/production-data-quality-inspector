@@ -35,11 +35,12 @@ SCORE_EXPLANATION = (
     "The file is still not approved while any Error remains."
 )
 CHART_CAPTION = (
-    "Showing the five rules with the most findings. "
+    "Showing the ten rules with the most findings. "
     "See the Issues tab for the complete inspection report."
 )
-OVERVIEW_CHART_HEIGHT = 260
-OVERVIEW_BAR_SIZE = 24
+OVERVIEW_LIMIT = 10
+OVERVIEW_BAR_SIZE = 14
+OVERVIEW_CATEGORY_STEP = 28
 OVERVIEW_TEAL = "#0E7490"
 _CATALOG_ORDER = {rule.rule_id: index for index, rule in enumerate(VALIDATION_RULES)}
 PROBLEM_LABELS = {
@@ -319,7 +320,9 @@ def _render_result_tabs(inspection: InspectionBundle) -> None:
         _render_downloads(inspection)
 
 
-def top_error_problems(rule_summary: pd.DataFrame, limit: int = 5) -> pd.DataFrame:
+def top_error_problems(
+    rule_summary: pd.DataFrame, limit: int = OVERVIEW_LIMIT
+) -> pd.DataFrame:
     """Return the top Error rules for the Overview chart and table."""
 
     failed = rule_summary.loc[rule_summary["result"] == "Error"].copy()
@@ -345,30 +348,31 @@ def top_error_problems(rule_summary: pd.DataFrame, limit: int = 5) -> pd.DataFra
 
 
 def overview_chart_spec(chart_labels: list[str]) -> dict[str, object]:
-    """Compact Vega-Lite spec for the top-five Error findings chart."""
+    """Compact Vega-Lite spec for the top Error findings chart."""
 
+    height = OVERVIEW_CATEGORY_STEP * max(len(chart_labels), 1)
     category = {
         "field": "Chart label",
         "type": "ordinal",
         "sort": chart_labels,
         "title": None,
-        "scale": {"paddingInner": 0.42, "paddingOuter": 0.18},
+        "scale": {"paddingInner": 0.48, "paddingOuter": 0.12},
         "axis": {
-            "labelLimit": 180,
+            "labelLimit": 220,
             "labelOverlap": False,
             "ticks": False,
             "domain": False,
         },
     }
     return {
-        "height": OVERVIEW_CHART_HEIGHT,
-        "padding": {"left": 4, "right": 28, "top": 6, "bottom": 6},
+        "height": height,
+        "padding": {"left": 4, "right": 28, "top": 10, "bottom": 12},
         "autosize": {"type": "fit", "contains": "padding"},
         "layer": [
             {
                 "mark": {
                     "type": "bar",
-                    "cornerRadiusEnd": 5,
+                    "cornerRadiusEnd": 4,
                     "size": OVERVIEW_BAR_SIZE,
                     "color": OVERVIEW_TEAL,
                 },
@@ -379,7 +383,7 @@ def overview_chart_spec(chart_labels: list[str]) -> dict[str, object]:
                         "type": "quantitative",
                         "title": None,
                         "axis": {"tickMinStep": 1, "format": "d", "grid": True},
-                        "scale": {"zero": True, "nice": True},
+                        "scale": {"zero": True, "nice": True, "domainMin": 0},
                     },
                     "tooltip": [
                         {
@@ -390,7 +394,7 @@ def overview_chart_spec(chart_labels: list[str]) -> dict[str, object]:
                         {
                             "field": "Findings",
                             "type": "quantitative",
-                            "title": "Findings",
+                            "title": "Error findings",
                             "format": "d",
                         },
                         {
@@ -435,7 +439,7 @@ def _render_overview(inspection: InspectionBundle) -> None:
     if display.empty:
         st.success("No Error findings were detected.")
         return
-    st.markdown("**Most frequent Error findings**")
+    st.markdown("**Top 10 Error findings by rule**")
     st.vega_lite_chart(
         display,
         overview_chart_spec(display["Chart label"].tolist()),

@@ -15,20 +15,31 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = PROJECT_ROOT / "streamlit_app.py"
 WORKFLOW = "Choose source → Preview → Inspect → Review problems → Download reports"
 SCORE_TEXT = "The score shows how many rows have no Error findings."
-TOP_FIVE_LABELS = [
+TOP_TEN_LABELS = [
     "Duplicate record IDs",
     "Invalid machine IDs",
     "Invalid produced quantities",
     "Invalid cycle times",
     "Quantity imbalance",
+    "Missing record IDs",
+    "Invalid production dates",
+    "Invalid shifts",
+    "Invalid product codes",
+    "Invalid good quantities",
 ]
-TOP_FIVE_CHART_LABELS = [
+TOP_TEN_CHART_LABELS = [
     "Duplicate IDs",
     "Machine IDs",
     "Produced quantity",
     "Cycle time",
     "Quantity balance",
+    "Missing IDs",
+    "Dates",
+    "Shifts",
+    "Product codes",
+    "Good quantity",
 ]
+TOP_TEN_FINDINGS = [2, 2, 2, 2, 2, 1, 1, 1, 1, 1]
 
 
 def _start_app(timeout: int = 15) -> AppTest:
@@ -112,7 +123,7 @@ def test_demonstration_inspection_shows_expected_result() -> None:
     assert "17" in body
     assert "18" in body
     assert body.count(SCORE_TEXT) == 1
-    assert "Most frequent Error findings" in body
+    assert "Top 10 Error findings by rule" in body
     assert CHART_CAPTION in body
     tab_labels = [tab.label for tab in getattr(app, "tabs", [])] or [
         tab.label for tab in getattr(app, "tab", [])
@@ -139,8 +150,9 @@ def test_human_friendly_labels_and_downloads_after_inspection() -> None:
         for frame in frames
         if list(frame.columns) == ["Problem", "Findings", "Affected rows"]
     )
-    assert list(frequent["Problem"]) == TOP_FIVE_LABELS
-    assert list(frequent["Findings"]) == [2, 2, 2, 2, 2]
+    assert list(frequent["Problem"]) == TOP_TEN_LABELS
+    assert list(frequent["Findings"]) == TOP_TEN_FINDINGS
+    assert len(frequent) == 10
     assert "Chart label" not in frequent.columns
     assert "finding_count" not in frequent.columns
     assert "title" not in frequent.columns
@@ -171,16 +183,17 @@ def test_human_friendly_labels_and_downloads_after_inspection() -> None:
     assert "Rule" in text
 
 
-def test_top_five_overview_uses_catalog_tie_order() -> None:
+def test_top_ten_overview_uses_catalog_tie_order() -> None:
     from production_quality.data import load_production_data
     from streamlit_app import inspect_dataset, top_error_problems
 
     data = load_production_data(PROJECT_ROOT / "data" / "production_data.csv")
     bundle = inspect_dataset(data)
     display = top_error_problems(bundle.rules)
-    assert list(display["Problem"]) == TOP_FIVE_LABELS
-    assert list(display["Chart label"]) == TOP_FIVE_CHART_LABELS
-    assert list(display["Findings"]) == [2, 2, 2, 2, 2]
+    assert list(display["Problem"]) == TOP_TEN_LABELS
+    assert list(display["Chart label"]) == TOP_TEN_CHART_LABELS
+    assert list(display["Findings"]) == TOP_TEN_FINDINGS
+    assert len(display) == 10
     assert bundle.complete.error_count == 18
     assert bundle.complete.affected_row_count == 17
     assert len(bundle.issues) == 18
@@ -188,13 +201,27 @@ def test_top_five_overview_uses_catalog_tie_order() -> None:
 
 
 def test_overview_chart_spec_keeps_short_labels_and_full_tooltip() -> None:
-    from streamlit_app import OVERVIEW_BAR_SIZE, OVERVIEW_CHART_HEIGHT, overview_chart_spec
+    from streamlit_app import (
+        OVERVIEW_BAR_SIZE,
+        OVERVIEW_CATEGORY_STEP,
+        overview_chart_spec,
+    )
 
-    spec = overview_chart_spec(TOP_FIVE_CHART_LABELS)
+    spec = overview_chart_spec(TOP_TEN_CHART_LABELS)
     bar = spec["layer"][0]
-    assert spec["height"] == OVERVIEW_CHART_HEIGHT
+    assert spec["height"] == OVERVIEW_CATEGORY_STEP * len(TOP_TEN_CHART_LABELS)
     assert bar["mark"]["size"] == OVERVIEW_BAR_SIZE
-    assert bar["encoding"]["y"]["sort"] == TOP_FIVE_CHART_LABELS
+    assert bar["encoding"]["y"]["sort"] == TOP_TEN_CHART_LABELS
     assert bar["encoding"]["y"]["title"] is None
-    tooltip_fields = [item["field"] for item in bar["encoding"]["tooltip"]]
-    assert tooltip_fields == ["Problem", "Findings", "Affected rows"]
+    assert bar["encoding"]["x"]["scale"]["domainMin"] == 0
+    tooltip = bar["encoding"]["tooltip"]
+    assert [item["field"] for item in tooltip] == [
+        "Problem",
+        "Findings",
+        "Affected rows",
+    ]
+    assert [item["title"] for item in tooltip] == [
+        "Problem",
+        "Error findings",
+        "Affected rows",
+    ]
