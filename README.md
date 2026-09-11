@@ -1,121 +1,135 @@
 # Production Data Quality Inspector
 
-A Python application that inspects manufacturing production extracts, finds data-quality problems, and presents those findings in an English Streamlit dashboard.
+A reusable Python data-validation project for manufacturing CSV files. It checks the structure and business rules of an incoming production extract, reports every detected problem, calculates a row-cleanliness score, and keeps the original source values unchanged.
 
-This is Assignment 2. It is a new project and does not reuse the Assignment 1 order-reporting application.
+The validation engine is built with **Pandera**. A separate manual **Pandas** validator is included for comparison and learning. **Streamlit** provides the user interface.
 
-## The manufacturing problem
+## Live application
 
-Production managers rely on daily machine extracts to understand output, scrap, and downtime. Those files are only useful when the basics are trustworthy: every row has an ID, dates are real calendar days, quantities are numbers, good plus scrap does not exceed total output, and downtime fits inside the planned run.
+[Open the Production Data Quality Inspector](https://appuction-data-quality-inspector.streamlit.app/)
 
-When an extract contains blank IDs, unknown machines, text in quantity fields, or impossible totals, reports become misleading. This project inspects that extract before anyone treats it as a production result.
+## Dashboard
 
-## Current status: Stage 3
+### Inspection overview
 
-Stage 3 adds the dashboard and the row-cleanliness score:
+![Dashboard overview showing the quality score and the ten most frequent error rules](docs/images/dashboard-overview.png)
 
-- Upload a CSV or use the synthetic demonstration file.
-- Run complete/lazy Pandera validation as the production inspection.
-- See status, score, issues, affected records, and the 19-rule contract.
-- Compare Pandera direct, Pandera complete, and manual Pandas in a separate tab.
-- Download in-memory CSV reports.
+### Detailed findings
 
-The application does not repair source data, save uploads, or deploy to the cloud. Presentation slides come later.
+![Issues tab showing filters and row-level validation findings](docs/images/dashboard-issues.png)
 
-## Screenshots
+### Validator comparison
 
-Dashboard screenshots will be added when the final documentation pack is prepared. Do not expect screenshot files in this repository yet.
+![Comparison between direct Pandera, complete Pandera, and manual Pandas validation](docs/images/validation-comparison.png)
 
-## Application workflow
+## What the project demonstrates
+
+- Declarative DataFrame validation with Pandera
+- Required columns and unexpected-column handling
+- Missing values, uniqueness, dates, allowed values, and numeric ranges
+- Cross-column business rules
+- Direct validation compared with complete/lazy validation
+- Pandera compared with equivalent manual Pandas checks
+- Structured issue reporting with original row values
+- A row-cleanliness score that does not replace the validation decision
+- In-memory CSV downloads and uploads
+- Automated tests with pytest
+- A thin Streamlit interface over reusable Python modules
+
+## Example result
+
+The included demonstration dataset contains 1,200 synthetic manufacturing records and a small number of deliberately planted data-quality problems.
+
+| Metric | Result |
+| --- | ---: |
+| Status | Issues found |
+| Total rows | 1,200 |
+| Clean rows | 1,183 |
+| Affected rows | 17 |
+| Error findings | 18 |
+| Warning findings | 0 |
+| Row-cleanliness score | 98.58% |
+
+The file remains invalid while any Error finding exists. A high score therefore does not mean that the file is approved.
+
+## Human workflow
+
+1. Select the included demonstration dataset or upload a CSV file.
+2. Preview the extract without changing its values.
+3. Run the quality inspection.
+4. Review the status, score, and most frequent problems.
+5. Filter the detailed issue report or inspect the affected source records.
+6. Compare Pandera validation with the manual Pandas implementation.
+7. Download the generated CSV reports.
+
+## Validation design
+
+The project treats the schema as a data contract. The contract describes the columns and rules that a production extract must follow before another analysis or process can trust it.
 
 ```mermaid
 flowchart LR
-    A[Choose source] --> B[Load without repair]
-    B --> C[Pandera complete validation]
-    C --> D[Quality result]
-    D --> E[Investigate and download]
+    A[CSV file] --> B[Safe loader]
+    B --> C[Pandera schema]
+    C --> D[Validation result]
+    D --> E[Quality score]
+    D --> F[Issue reports]
+    E --> G[Streamlit dashboard]
+    F --> G
 ```
 
-1. Choose a data source: upload a CSV or use the demonstration dataset.
-2. Preview the extract. Previewing does not change values.
-3. Run quality inspection.
-4. Read the status and row-cleanliness score.
-5. Investigate issues, affected records, and the rulebook.
-6. Download the reports.
+The rule catalog contains 19 checks covering:
 
-## Dashboard tabs
+- Required and unexpected columns
+- Record IDs and duplicate IDs
+- Valid calendar dates
+- Agreed production lines, machines, shifts, and product codes
+- Numeric production, scrap, downtime, planning, and cycle-time values
+- Quantity balance between produced, good, and scrap quantities
+- Downtime that must not exceed planned production time
 
-- **Overview** — status, Error findings chart, and the most frequent problems.
-- **Issues** — complete findings with severity, rule, and field filters.
-- **Affected records** — original source rows connected to Errors, not repaired.
-- **Rulebook** — all 19 contract rules and the current result for each.
-- **Validation comparison** — educational view of Pandera direct, Pandera complete, and manual Pandas.
-- **Downloads** — in-memory CSV reports.
+### Direct and complete validation
 
-## Quality-score explanation
+Direct Pandera validation stops after the first serious schema failure. Complete validation uses `lazy=True` and collects independent problems across the file. The dashboard uses complete validation because a production user normally needs a useful inspection report, not only the first error.
 
-The row-cleanliness score is the percentage of rows with no Error findings:
+### Pandera and manual Pandas
 
-`score = round((clean_rows / total_rows) * 100, 2)`
+The manual validator applies the same business rules with ordinary Pandas operations. It exists to make the comparison visible:
 
-Warnings do not reduce the score. Any Error still makes the file invalid. A structurally broken file, such as one with missing required columns, is **Not scorable**. Details are in [docs/quality_score.md](docs/quality_score.md).
+| Approach | Role in this project |
+| --- | --- |
+| Pandera complete | Main production validation engine |
+| Pandera direct | Demonstrates fail-fast behaviour |
+| Manual Pandas | Educational comparison |
 
-On the demonstration file the expected main result is:
+Pandera keeps the contract and reusable checks in one schema. Manual Pandas offers flexibility, but it needs more handwritten checking and error-reporting code.
 
-- Total rows: 1,200
-- Affected rows: 17
-- Clean rows: 1,183
-- Row-cleanliness score: 98.58%
-- Error findings: 18
-- Warning findings: 0
-- Status: Issues found
+### Quality score
 
-The score shows how many rows have no Error findings. The file is still not approved while any Error remains.
+The score measures how many rows have no Error findings:
 
-## Pandera as the production engine
-
-The dashboard inspection button calls `validate_with_pandera(data, lazy=True)`. That complete/lazy scan is the application engine used for status, score, issues, and downloads.
-
-## Pandas comparison as educational only
-
-The **Validation comparison** tab also runs Pandera direct validation and `validate_with_pandas`. The pandas path exists to show how much handwritten checking the schema avoids. It does not power the main inspection.
-
-## Dataset overview
-
-The working extract is `data/production_data.csv`.
-
-- About 1,200 synthetic manufacturing rows.
-- 13 columns covering identity, plant, machine, product, quantities, and time.
-- Valid boundary values and planted invalid values are both present on purpose.
-- Those planted errors must not be cleaned out of the CSV.
-
-The dataset is synthetic and contains no confidential production information. A full inspection is recorded in [docs/data_profile.md](docs/data_profile.md).
-
-## Installation
-
-Use Python 3.11 or later. From the project root:
-
-```bash
-python -m pip install -r requirements.txt
+```text
+clean rows = total rows - unique rows affected by Errors
+score = round(clean rows / total rows * 100, 2)
 ```
 
-Required packages are pandas, Pandera, pytest, and Streamlit.
+Each affected row is counted once even when it fails several rules. Warnings do not lower the score. A file with missing required columns or no data rows is shown as **Not scorable**.
 
-## How to run the dashboard
+## Data
 
-```bash
-python -m streamlit run streamlit_app.py
-```
+`data/production_data.csv` is a synthetic dataset created for this project. It contains no confidential production information and no personal data.
 
-## How to run the tests
+The 13 expected columns are:
 
-```bash
-python -m pytest -q
-```
+| Area | Columns |
+| --- | --- |
+| Identification | `record_id`, `production_date`, `plant` |
+| Production context | `production_line`, `machine_id`, `shift`, `product_code` |
+| Quantities | `produced_quantity`, `good_quantity`, `scrap_quantity` |
+| Time | `downtime_minutes`, `planned_minutes`, `cycle_time_seconds` |
 
-Most tests use small controlled DataFrames. They do not write into `data/`.
+The demonstration errors are intentional. Do not clean or replace the source file if you want to reproduce the documented result.
 
-## Current project structure
+## Project structure
 
 ```text
 production-data-quality-inspector/
@@ -124,6 +138,11 @@ production-data-quality-inspector/
 ├── data/
 │   └── production_data.csv
 ├── docs/
+│   ├── images/
+│   │   ├── csv-upload.png
+│   │   ├── dashboard-issues.png
+│   │   ├── dashboard-overview.png
+│   │   └── validation-comparison.png
 │   ├── data_dictionary.md
 │   ├── data_profile.md
 │   ├── pandera_vs_manual.md
@@ -159,36 +178,100 @@ production-data-quality-inspector/
 └── streamlit_app.py
 ```
 
-## Downloaded reports
+## Installation
 
-Downloads are built in memory from the current inspection:
+Python 3.11 is recommended.
 
-- `quality_summary.csv` — status, score, and counts
-- `quality_issues.csv` — finding-level report
-- `affected_records.csv` — original Error-affected source rows
-- `validation_rule_summary.csv` — all 19 rules and current results
+### Windows PowerShell
 
-There is no “cleaned dataset” download because the application does not repair source data.
+```powershell
+git clone https://github.com/JunusEmre/production-data-quality-inspector.git
+cd production-data-quality-inspector
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
 
-## Privacy
+### macOS or Linux
 
-Uploaded CSVs are read in memory and passed to the existing loader. They are not permanently saved. Closing the session discards the upload.
+```bash
+git clone https://github.com/JunusEmre/production-data-quality-inspector.git
+cd production-data-quality-inspector
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
 
-## Data notice
+## Run the dashboard
 
-`data/production_data.csv` is synthetic manufacturing data created for teaching and portfolio demonstration. It contains no confidential production information.
+```bash
+python -m streamlit run streamlit_app.py
+```
 
-## Current limitations
+Open the local address shown by Streamlit, normally `http://localhost:8501`.
 
-- Invalid source values are reported, not repaired.
-- Extra columns are warnings; they are not dropped from the file.
-- There is no cloud deployment, authentication, or database.
-- Presentation slides and screenshot files come later.
+## Run the tests
 
-## Technologies
+```bash
+python -m pytest -q
+```
 
-- **Python** for the application
-- **pandas** for loading and the educational comparison validator
-- **Pandera** for the production schema and validation engine
-- **pytest** for automated tests
-- **Streamlit** for the English dashboard
+The completed test suite contains 159 tests covering configuration, loading, schema behaviour, both validators, reporting, scoring, side effects, and the Streamlit workflow.
+
+## Main modules
+
+| Module | Responsibility |
+| --- | --- |
+| `config.py` | Immutable data contract and allowed business values |
+| `data.py` | Safe CSV loading without business-rule repair |
+| `rules.py` | Metadata for the 19 validation rules |
+| `schema.py` | Pandera DataFrame schema |
+| `validation.py` | Main Pandera validation service |
+| `manual_validation.py` | Equivalent handwritten Pandas comparison |
+| `models.py` | Structured validation issues and results |
+| `quality.py` | Row-cleanliness score and status |
+| `reporting.py` | In-memory issue, record, rule, and summary reports |
+| `streamlit_app.py` | User interface and session workflow |
+
+## Design decisions
+
+- **No automatic repair:** the inspector reports the original problem instead of silently changing production data.
+- **Complete validation in the dashboard:** users receive a useful batch report with independent failures.
+- **Warnings and Errors remain different:** warnings can describe a concern without rejecting the file.
+- **Extra columns are warnings:** additional information does not block the agreed 13-column contract.
+- **The loader and validator are separate:** loading a file does not automatically apply business rules.
+- **The Streamlit layer is thin:** validation can be reused without the dashboard.
+- **Uploads and reports stay in memory:** the app does not save uploaded files to disk.
+
+## Limitations
+
+- The rules represent one manufacturing example and need configuration for another factory or process.
+- The demonstration data is synthetic.
+- Passing validation does not prove that every value is factually correct.
+- The score counts affected rows but does not measure the business cost of each problem.
+- The project detects and reports problems but does not repair or approve data.
+- The deployed app is a demonstration and has no authentication or stored inspection history.
+
+## Documentation
+
+- `docs/data_dictionary.md` explains the dataset fields.
+- `docs/data_profile.md` records the demonstration-data profile.
+- `docs/validation_rules.md` documents the rule catalog.
+- `docs/pandera_vs_manual.md` compares the two validators.
+- `docs/quality_score.md` explains scoring and status logic.
+
+## Main references
+
+- [Pandera DataFrame schemas](https://pandera.readthedocs.io/en/stable/dataframe_schemas.html)
+- [Pandera lazy validation](https://pandera.readthedocs.io/en/stable/lazy_validation.html)
+- [Pandas documentation](https://pandas.pydata.org/docs/)
+- [Streamlit documentation](https://docs.streamlit.io/)
+- [pytest documentation](https://docs.pytest.org/)
+
+## Author
+
+**Yunus Emre Capar**
+
+Production and process manager studying Data Science. This project connects Python validation with a practical manufacturing need: finding unreliable production data before it reaches reports or decisions.
