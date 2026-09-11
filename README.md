@@ -52,7 +52,7 @@ The included demonstration dataset contains 1,200 synthetic manufacturing record
 
 The file remains invalid while any Error finding exists. A high score therefore does not mean that the file is approved.
 
-## Human workflow
+## Workflow
 
 1. Select the included demonstration dataset or upload a CSV file.
 2. Preview the extract without changing its values.
