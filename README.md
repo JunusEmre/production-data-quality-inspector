@@ -173,6 +173,8 @@ production-data-quality-inspector/
 │   ├── test_streamlit_app.py
 │   ├── test_validation.py
 │   └── test_validator_comparison.py
+├── report/
+│   ├── rapport_datavalidering_med_pandera_sv.pdf
 ├── README.md
 ├── requirements.txt
 └── streamlit_app.py
