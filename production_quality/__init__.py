@@ -1,8 +1,8 @@
 """Production Data Quality Inspector.
 
-Stage 2 exposes configuration, safe CSV loading, the validation-rule catalog,
-and the Pandera validation engine. Importing this package does not read
-production files, write output, or run validation.
+The public interface covers loading, validation, scoring, and report
+builders. Importing this package does not read production files, start
+Streamlit, run validation, or write output.
 """
 
 from production_quality.config import PRODUCTION_DATA_CONFIG, ProductionDataConfig
@@ -10,6 +10,14 @@ from production_quality.data import load_production_data
 from production_quality.exceptions import DataLoadError
 from production_quality.manual_validation import validate_with_pandas
 from production_quality.models import ValidationIssue, ValidationResult
+from production_quality.quality import QualitySummary, calculate_quality_summary
+from production_quality.reporting import (
+    build_affected_records,
+    build_issue_report,
+    build_quality_summary_frame,
+    build_rule_summary,
+    dataframe_to_csv_bytes,
+)
 from production_quality.rules import VALIDATION_RULES, ValidationRule
 
 __all__ = [
@@ -21,6 +29,13 @@ __all__ = [
     "VALIDATION_RULES",
     "ValidationIssue",
     "ValidationResult",
+    "QualitySummary",
+    "calculate_quality_summary",
+    "build_issue_report",
+    "build_affected_records",
+    "build_rule_summary",
+    "build_quality_summary_frame",
+    "dataframe_to_csv_bytes",
     "build_production_schema",
     "validate_with_pandera",
     "validate_file_with_pandera",
