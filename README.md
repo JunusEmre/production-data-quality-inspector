@@ -45,8 +45,8 @@ flowchart LR
 
 ## Dashboard tabs
 
-- **Overview** — status, score explanation, metrics, and the most frequent Error rules.
-- **Issues** — complete findings with severity, rule, and column filters.
+- **Overview** — status, Error findings chart, and the most frequent problems.
+- **Issues** — complete findings with severity, rule, and field filters.
 - **Affected records** — original source rows connected to Errors, not repaired.
 - **Rulebook** — all 19 contract rules and the current result for each.
 - **Validation comparison** — educational view of Pandera direct, Pandera complete, and manual Pandas.

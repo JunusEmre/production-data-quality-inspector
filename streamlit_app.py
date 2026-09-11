@@ -110,17 +110,8 @@ def _inject_layout_css() -> None:
 
 
 def _render_workflow() -> None:
-    st.markdown(
-        """
-**Inspection workflow**
-
-1. Choose a data source  
-2. Preview the extract  
-3. Run the quality inspection  
-4. Understand the result  
-5. Investigate the problems  
-6. Download the reports  
-        """
+    st.caption(
+        "Choose source → Preview → Inspect → Review problems → Download reports"
     )
 
 
@@ -281,21 +272,41 @@ def _render_result_tabs(inspection: InspectionBundle) -> None:
 def _render_overview(inspection: InspectionBundle) -> None:
     summary = inspection.summary
     st.markdown(f"**Status:** {summary.status}")
-    st.write(SCORE_EXPLANATION)
     failed = inspection.rules[inspection.rules["result"] == "Error"].copy()
     if failed.empty:
         st.success("No Error findings were detected.")
         return
-    failed = failed.sort_values("finding_count", ascending=False)
+    failed = failed.sort_values(
+        by=["finding_count", "title"],
+        ascending=[False, True],
+        kind="mergesort",
+    )
     st.markdown("**Error findings by rule**")
-    chart = failed.set_index("title")["finding_count"]
-    st.bar_chart(chart, width="stretch")
-    st.markdown("**Most frequent problems**")
-    st.dataframe(
-        failed.loc[:, ["title", "finding_count", "affected_row_count"]].head(5),
-        hide_index=True,
+    chart = failed.loc[:, ["title", "finding_count"]].rename(
+        columns={"title": "Rule", "finding_count": "Error findings"}
+    )
+    st.bar_chart(
+        chart,
+        x="Rule",
+        y="Error findings",
+        horizontal=True,
+        x_label="Error findings",
+        y_label="",
+        sort=False,
+        color="primary",
+        height=max(360, 44 * len(chart) + 48),
         width="stretch",
     )
+    frequent = failed.loc[:, ["title", "finding_count", "affected_row_count"]].head(5)
+    frequent = frequent.rename(
+        columns={
+            "title": "Problem",
+            "finding_count": "Findings",
+            "affected_row_count": "Affected rows",
+        }
+    )
+    st.markdown("**Most frequent problems**")
+    st.dataframe(frequent, hide_index=True, width="stretch")
 
 
 def _render_issues(issues: pd.DataFrame) -> None:
@@ -313,18 +324,21 @@ def _render_issues(issues: pd.DataFrame) -> None:
         options=severities,
         default=severities,
         key="filter_severity",
+        help="Leave every option selected to display all values.",
     )
     selected_rules = st.multiselect(
         "Rule",
         options=rules,
         default=rules,
         key="filter_rule",
+        help="Leave every option selected to display all values.",
     )
     selected_columns = st.multiselect(
-        "Column",
+        "Field",
         options=columns,
         default=columns,
         key="filter_column",
+        help="Leave every option selected to display all values.",
     )
     visible = issues.copy()
     if selected_severity:
@@ -342,8 +356,28 @@ def _render_issues(issues: pd.DataFrame) -> None:
             ]
         else:
             visible = visible[visible["column"].isna()]
-    st.caption(f"Showing {len(visible):,} of {len(issues):,} findings.")
-    st.dataframe(visible, hide_index=True, width="stretch")
+    showing_all = (
+        set(selected_severity) == set(severities)
+        and set(selected_rules) == set(rules)
+        and (not columns or set(selected_columns) == set(columns))
+    )
+    if showing_all:
+        st.caption(f"All {len(issues):,} findings are currently displayed.")
+    else:
+        st.caption(f"Showing {len(visible):,} of {len(issues):,} findings.")
+    display = visible.rename(
+        columns={
+            "severity": "Severity",
+            "rule_id": "Rule ID",
+            "rule_title": "Rule",
+            "message": "Explanation",
+            "row_index": "Source row",
+            "record_id": "Record ID",
+            "column": "Field",
+            "failure_value": "Original value",
+        }
+    )
+    st.dataframe(display, hide_index=True, width="stretch")
 
 
 def _render_affected(affected: pd.DataFrame) -> None:
@@ -353,7 +387,15 @@ def _render_affected(affected: pd.DataFrame) -> None:
     if affected.empty:
         st.success("No source rows are connected to Error findings.")
         return
-    st.dataframe(affected, hide_index=True, width="stretch")
+    display = affected.rename(
+        columns={
+            "source_row": "Source row",
+            "error_count": "Error count",
+            "warning_count": "Warning count",
+            "failed_rules": "Failed rules",
+        }
+    )
+    st.dataframe(display, hide_index=True, width="stretch")
 
 
 def _render_rulebook(rules: pd.DataFrame) -> None:
@@ -363,12 +405,13 @@ def _render_rulebook(rules: pd.DataFrame) -> None:
         rows.append(
             {
                 "Rule ID": rule.rule_id,
-                "Title": rule.title,
+                "Rule": rule.title,
                 "Description": rule.description,
                 "Severity": rule.severity,
-                "Columns": ", ".join(rule.columns) if rule.columns else "Entire file",
-                "Current result": current["result"],
-                "Current finding count": int(current["finding_count"]),
+                "Fields": ", ".join(rule.columns) if rule.columns else "Entire file",
+                "Result": current["result"],
+                "Findings": int(current["finding_count"]),
+                "Affected rows": int(current["affected_row_count"]),
             }
         )
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
@@ -420,11 +463,11 @@ def _comparison_row(validator: str, mode: str, result: ValidationResult) -> dict
     return {
         "Validator": validator,
         "Mode": mode,
-        "Valid": result.is_valid,
+        "Valid": "Yes" if result.is_valid else "No",
         "Error findings": result.error_count,
         "Warning findings": result.warning_count,
         "Affected rows": result.affected_row_count,
-        "Number of detected rule categories": len(categories),
+        "Detected rule categories": len(categories),
     }
 
 
@@ -438,21 +481,43 @@ def _rule_id_list(result: ValidationResult) -> str:
 
 def _render_downloads(inspection: InspectionBundle) -> None:
     st.caption("Downloads are built in memory. Source data is not repaired.")
-    _download_button("quality_summary.csv", inspection.quality_frame)
-    if inspection.issues.empty:
-        st.info("There are no issue findings to download for this extract.")
-    else:
-        _download_button("quality_issues.csv", inspection.issues)
-    if inspection.affected.empty:
-        st.info("There are no affected records to download for this extract.")
-    else:
-        _download_button("affected_records.csv", inspection.affected)
-    _download_button("validation_rule_summary.csv", inspection.rules)
+    top_left, top_right = st.columns(2)
+    bottom_left, bottom_right = st.columns(2)
+    with top_left:
+        _download_button(
+            "quality_summary.csv",
+            inspection.quality_frame,
+            "Download quality summary",
+        )
+    with top_right:
+        if inspection.issues.empty:
+            st.info("There are no issue findings to download for this extract.")
+        else:
+            _download_button(
+                "quality_issues.csv",
+                inspection.issues,
+                "Download quality issues",
+            )
+    with bottom_left:
+        if inspection.affected.empty:
+            st.info("There are no affected records to download for this extract.")
+        else:
+            _download_button(
+                "affected_records.csv",
+                inspection.affected,
+                "Download affected records",
+            )
+    with bottom_right:
+        _download_button(
+            "validation_rule_summary.csv",
+            inspection.rules,
+            "Download rule summary",
+        )
 
 
-def _download_button(filename: str, frame: pd.DataFrame) -> None:
+def _download_button(filename: str, frame: pd.DataFrame, label: str) -> None:
     st.download_button(
-        label=f"Download {filename}",
+        label=label,
         data=dataframe_to_csv_bytes(frame),
         file_name=filename,
         mime="text/csv",
