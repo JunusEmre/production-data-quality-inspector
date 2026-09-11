@@ -34,6 +34,33 @@ SCORE_EXPLANATION = (
     "The score shows how many rows have no Error findings. "
     "The file is still not approved while any Error remains."
 )
+CHART_CAPTION = (
+    "Showing the five rules with the most findings. "
+    "See the Issues tab for the complete inspection report."
+)
+OVERVIEW_CHART_HEIGHT = 340
+_CATALOG_ORDER = {rule.rule_id: index for index, rule in enumerate(VALIDATION_RULES)}
+CHART_LABELS = {
+    "REQUIRED_COLUMNS": "Missing required columns",
+    "UNEXPECTED_COLUMNS": "Unexpected extra columns",
+    "NONEMPTY_DATASET": "Empty dataset",
+    "RECORD_ID_PRESENT": "Missing record IDs",
+    "UNIQUE_RECORD_ID": "Duplicate record IDs",
+    "VALID_PRODUCTION_DATE": "Invalid production dates",
+    "PLANT_PRESENT": "Missing plant names",
+    "VALID_PRODUCTION_LINE": "Invalid production lines",
+    "VALID_MACHINE_ID": "Invalid machine IDs",
+    "VALID_SHIFT": "Invalid shifts",
+    "VALID_PRODUCT_CODE": "Invalid product codes",
+    "PRODUCED_QUANTITY_RANGE": "Invalid produced quantities",
+    "GOOD_QUANTITY_RANGE": "Invalid good quantities",
+    "SCRAP_QUANTITY_RANGE": "Invalid scrap quantities",
+    "DOWNTIME_MINUTES_RANGE": "Invalid downtime minutes",
+    "PLANNED_MINUTES_RANGE": "Invalid planned minutes",
+    "CYCLE_TIME_RANGE": "Invalid cycle times",
+    "QUANTITY_BALANCE": "Quantity imbalance",
+    "DOWNTIME_WITHIN_PLAN": "Downtime exceeds plan",
+}
 
 
 @dataclass
@@ -269,44 +296,49 @@ def _render_result_tabs(inspection: InspectionBundle) -> None:
         _render_downloads(inspection)
 
 
+def top_error_problems(rule_summary: pd.DataFrame, limit: int = 5) -> pd.DataFrame:
+    """Return the top Error rules for the Overview chart and table."""
+
+    failed = rule_summary.loc[rule_summary["result"] == "Error"].copy()
+    if failed.empty:
+        return pd.DataFrame(columns=["Problem", "Findings", "Affected rows"])
+    failed["_catalog_order"] = failed["rule_id"].map(_CATALOG_ORDER)
+    failed = failed.sort_values(
+        by=["finding_count", "_catalog_order"],
+        ascending=[False, True],
+        kind="mergesort",
+    ).head(limit)
+    return pd.DataFrame(
+        {
+            "Problem": failed["rule_id"].map(CHART_LABELS).fillna(failed["title"]),
+            "Findings": failed["finding_count"].astype(int),
+            "Affected rows": failed["affected_row_count"].astype(int),
+        }
+    ).reset_index(drop=True)
+
+
 def _render_overview(inspection: InspectionBundle) -> None:
     summary = inspection.summary
     st.markdown(f"**Status:** {summary.status}")
-    failed = inspection.rules[inspection.rules["result"] == "Error"].copy()
-    if failed.empty:
+    display = top_error_problems(inspection.rules)
+    if display.empty:
         st.success("No Error findings were detected.")
         return
-    failed = failed.sort_values(
-        by=["finding_count", "title"],
-        ascending=[False, True],
-        kind="mergesort",
-    )
-    st.markdown("**Error findings by rule**")
-    chart = failed.loc[:, ["title", "finding_count"]].rename(
-        columns={"title": "Rule", "finding_count": "Error findings"}
-    )
+    st.markdown("**Most frequent Error findings**")
     st.bar_chart(
-        chart,
-        x="Rule",
-        y="Error findings",
+        display.loc[:, ["Problem", "Findings"]],
+        x="Problem",
+        y="Findings",
         horizontal=True,
-        x_label="Error findings",
+        x_label="",
         y_label="",
         sort=False,
         color="primary",
-        height=max(360, 44 * len(chart) + 48),
+        height=OVERVIEW_CHART_HEIGHT,
         width="stretch",
     )
-    frequent = failed.loc[:, ["title", "finding_count", "affected_row_count"]].head(5)
-    frequent = frequent.rename(
-        columns={
-            "title": "Problem",
-            "finding_count": "Findings",
-            "affected_row_count": "Affected rows",
-        }
-    )
-    st.markdown("**Most frequent problems**")
-    st.dataframe(frequent, hide_index=True, width="stretch")
+    st.caption(CHART_CAPTION)
+    st.dataframe(display, hide_index=True, width="stretch")
 
 
 def _render_issues(issues: pd.DataFrame) -> None:

@@ -9,10 +9,19 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
+from streamlit_app import CHART_CAPTION
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = PROJECT_ROOT / "streamlit_app.py"
 WORKFLOW = "Choose source → Preview → Inspect → Review problems → Download reports"
 SCORE_TEXT = "The score shows how many rows have no Error findings."
+TOP_FIVE_LABELS = [
+    "Duplicate record IDs",
+    "Invalid machine IDs",
+    "Invalid produced quantities",
+    "Invalid cycle times",
+    "Quantity imbalance",
+]
 
 
 def _start_app(timeout: int = 15) -> AppTest:
@@ -96,6 +105,8 @@ def test_demonstration_inspection_shows_expected_result() -> None:
     assert "17" in body
     assert "18" in body
     assert body.count(SCORE_TEXT) == 1
+    assert "Most frequent Error findings" in body
+    assert CHART_CAPTION in body
     tab_labels = [tab.label for tab in getattr(app, "tabs", [])] or [
         tab.label for tab in getattr(app, "tab", [])
     ]
@@ -121,11 +132,14 @@ def test_human_friendly_labels_and_downloads_after_inspection() -> None:
         for frame in frames
         if list(frame.columns) == ["Problem", "Findings", "Affected rows"]
     )
+    assert list(frequent["Problem"]) == TOP_FIVE_LABELS
+    assert list(frequent["Findings"]) == [2, 2, 2, 2, 2]
     assert "finding_count" not in frequent.columns
     assert "title" not in frequent.columns
     assert "affected_row_count" not in frequent.columns
 
     issues = next(frame for frame in frames if "Explanation" in frame.columns)
+    assert len(issues) == 18
     assert list(issues.columns)[:8] == [
         "Severity",
         "Rule ID",
@@ -147,3 +161,18 @@ def test_human_friendly_labels_and_downloads_after_inspection() -> None:
     assert "Severity" in text
     assert "Field" in text
     assert "Rule" in text
+
+
+def test_top_five_overview_uses_catalog_tie_order() -> None:
+    from production_quality.data import load_production_data
+    from streamlit_app import inspect_dataset, top_error_problems
+
+    data = load_production_data(PROJECT_ROOT / "data" / "production_data.csv")
+    bundle = inspect_dataset(data)
+    display = top_error_problems(bundle.rules)
+    assert list(display["Problem"]) == TOP_FIVE_LABELS
+    assert list(display["Findings"]) == [2, 2, 2, 2, 2]
+    assert bundle.complete.error_count == 18
+    assert bundle.complete.affected_row_count == 17
+    assert len(bundle.issues) == 18
+    assert list(bundle.issues.columns)[0] == "severity"
