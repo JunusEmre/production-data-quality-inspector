@@ -22,6 +22,13 @@ TOP_FIVE_LABELS = [
     "Invalid cycle times",
     "Quantity imbalance",
 ]
+TOP_FIVE_CHART_LABELS = [
+    "Duplicate IDs",
+    "Machine IDs",
+    "Produced quantity",
+    "Cycle time",
+    "Quantity balance",
+]
 
 
 def _start_app(timeout: int = 15) -> AppTest:
@@ -134,6 +141,7 @@ def test_human_friendly_labels_and_downloads_after_inspection() -> None:
     )
     assert list(frequent["Problem"]) == TOP_FIVE_LABELS
     assert list(frequent["Findings"]) == [2, 2, 2, 2, 2]
+    assert "Chart label" not in frequent.columns
     assert "finding_count" not in frequent.columns
     assert "title" not in frequent.columns
     assert "affected_row_count" not in frequent.columns
@@ -171,8 +179,22 @@ def test_top_five_overview_uses_catalog_tie_order() -> None:
     bundle = inspect_dataset(data)
     display = top_error_problems(bundle.rules)
     assert list(display["Problem"]) == TOP_FIVE_LABELS
+    assert list(display["Chart label"]) == TOP_FIVE_CHART_LABELS
     assert list(display["Findings"]) == [2, 2, 2, 2, 2]
     assert bundle.complete.error_count == 18
     assert bundle.complete.affected_row_count == 17
     assert len(bundle.issues) == 18
     assert list(bundle.issues.columns)[0] == "severity"
+
+
+def test_overview_chart_spec_keeps_short_labels_and_full_tooltip() -> None:
+    from streamlit_app import OVERVIEW_BAR_SIZE, OVERVIEW_CHART_HEIGHT, overview_chart_spec
+
+    spec = overview_chart_spec(TOP_FIVE_CHART_LABELS)
+    bar = spec["layer"][0]
+    assert spec["height"] == OVERVIEW_CHART_HEIGHT
+    assert bar["mark"]["size"] == OVERVIEW_BAR_SIZE
+    assert bar["encoding"]["y"]["sort"] == TOP_FIVE_CHART_LABELS
+    assert bar["encoding"]["y"]["title"] is None
+    tooltip_fields = [item["field"] for item in bar["encoding"]["tooltip"]]
+    assert tooltip_fields == ["Problem", "Findings", "Affected rows"]

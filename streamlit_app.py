@@ -38,9 +38,11 @@ CHART_CAPTION = (
     "Showing the five rules with the most findings. "
     "See the Issues tab for the complete inspection report."
 )
-OVERVIEW_CHART_HEIGHT = 340
+OVERVIEW_CHART_HEIGHT = 260
+OVERVIEW_BAR_SIZE = 24
+OVERVIEW_TEAL = "#0E7490"
 _CATALOG_ORDER = {rule.rule_id: index for index, rule in enumerate(VALIDATION_RULES)}
-CHART_LABELS = {
+PROBLEM_LABELS = {
     "REQUIRED_COLUMNS": "Missing required columns",
     "UNEXPECTED_COLUMNS": "Unexpected extra columns",
     "NONEMPTY_DATASET": "Empty dataset",
@@ -60,6 +62,27 @@ CHART_LABELS = {
     "CYCLE_TIME_RANGE": "Invalid cycle times",
     "QUANTITY_BALANCE": "Quantity imbalance",
     "DOWNTIME_WITHIN_PLAN": "Downtime exceeds plan",
+}
+SHORT_CHART_LABELS = {
+    "REQUIRED_COLUMNS": "Missing columns",
+    "UNEXPECTED_COLUMNS": "Extra columns",
+    "NONEMPTY_DATASET": "Empty dataset",
+    "RECORD_ID_PRESENT": "Missing IDs",
+    "UNIQUE_RECORD_ID": "Duplicate IDs",
+    "VALID_PRODUCTION_DATE": "Dates",
+    "PLANT_PRESENT": "Plant names",
+    "VALID_PRODUCTION_LINE": "Production lines",
+    "VALID_MACHINE_ID": "Machine IDs",
+    "VALID_SHIFT": "Shifts",
+    "VALID_PRODUCT_CODE": "Product codes",
+    "PRODUCED_QUANTITY_RANGE": "Produced quantity",
+    "GOOD_QUANTITY_RANGE": "Good quantity",
+    "SCRAP_QUANTITY_RANGE": "Scrap quantity",
+    "DOWNTIME_MINUTES_RANGE": "Downtime minutes",
+    "PLANNED_MINUTES_RANGE": "Planned minutes",
+    "CYCLE_TIME_RANGE": "Cycle time",
+    "QUANTITY_BALANCE": "Quantity balance",
+    "DOWNTIME_WITHIN_PLAN": "Downtime vs plan",
 }
 
 
@@ -300,8 +323,9 @@ def top_error_problems(rule_summary: pd.DataFrame, limit: int = 5) -> pd.DataFra
     """Return the top Error rules for the Overview chart and table."""
 
     failed = rule_summary.loc[rule_summary["result"] == "Error"].copy()
+    empty_columns = ["Problem", "Chart label", "Findings", "Affected rows"]
     if failed.empty:
-        return pd.DataFrame(columns=["Problem", "Findings", "Affected rows"])
+        return pd.DataFrame(columns=empty_columns)
     failed["_catalog_order"] = failed["rule_id"].map(_CATALOG_ORDER)
     failed = failed.sort_values(
         by=["finding_count", "_catalog_order"],
@@ -310,11 +334,98 @@ def top_error_problems(rule_summary: pd.DataFrame, limit: int = 5) -> pd.DataFra
     ).head(limit)
     return pd.DataFrame(
         {
-            "Problem": failed["rule_id"].map(CHART_LABELS).fillna(failed["title"]),
+            "Problem": failed["rule_id"].map(PROBLEM_LABELS).fillna(failed["title"]),
+            "Chart label": failed["rule_id"].map(SHORT_CHART_LABELS).fillna(
+                failed["title"]
+            ),
             "Findings": failed["finding_count"].astype(int),
             "Affected rows": failed["affected_row_count"].astype(int),
         }
     ).reset_index(drop=True)
+
+
+def overview_chart_spec(chart_labels: list[str]) -> dict[str, object]:
+    """Compact Vega-Lite spec for the top-five Error findings chart."""
+
+    category = {
+        "field": "Chart label",
+        "type": "ordinal",
+        "sort": chart_labels,
+        "title": None,
+        "scale": {"paddingInner": 0.42, "paddingOuter": 0.18},
+        "axis": {
+            "labelLimit": 180,
+            "labelOverlap": False,
+            "ticks": False,
+            "domain": False,
+        },
+    }
+    return {
+        "height": OVERVIEW_CHART_HEIGHT,
+        "padding": {"left": 4, "right": 28, "top": 6, "bottom": 6},
+        "autosize": {"type": "fit", "contains": "padding"},
+        "layer": [
+            {
+                "mark": {
+                    "type": "bar",
+                    "cornerRadiusEnd": 5,
+                    "size": OVERVIEW_BAR_SIZE,
+                    "color": OVERVIEW_TEAL,
+                },
+                "encoding": {
+                    "y": category,
+                    "x": {
+                        "field": "Findings",
+                        "type": "quantitative",
+                        "title": None,
+                        "axis": {"tickMinStep": 1, "format": "d", "grid": True},
+                        "scale": {"zero": True, "nice": True},
+                    },
+                    "tooltip": [
+                        {
+                            "field": "Problem",
+                            "type": "nominal",
+                            "title": "Problem",
+                        },
+                        {
+                            "field": "Findings",
+                            "type": "quantitative",
+                            "title": "Findings",
+                            "format": "d",
+                        },
+                        {
+                            "field": "Affected rows",
+                            "type": "quantitative",
+                            "title": "Affected rows",
+                            "format": "d",
+                        },
+                    ],
+                },
+            },
+            {
+                "mark": {
+                    "type": "text",
+                    "align": "left",
+                    "baseline": "middle",
+                    "dx": 8,
+                    "color": "#102A43",
+                },
+                "encoding": {
+                    "y": {
+                        "field": "Chart label",
+                        "type": "ordinal",
+                        "sort": chart_labels,
+                    },
+                    "x": {"field": "Findings", "type": "quantitative"},
+                    "text": {
+                        "field": "Findings",
+                        "type": "quantitative",
+                        "format": "d",
+                    },
+                },
+            },
+        ],
+    }
 
 
 def _render_overview(inspection: InspectionBundle) -> None:
@@ -325,20 +436,18 @@ def _render_overview(inspection: InspectionBundle) -> None:
         st.success("No Error findings were detected.")
         return
     st.markdown("**Most frequent Error findings**")
-    st.bar_chart(
-        display.loc[:, ["Problem", "Findings"]],
-        x="Problem",
-        y="Findings",
-        horizontal=True,
-        x_label="",
-        y_label="",
-        sort=False,
-        color="primary",
-        height=OVERVIEW_CHART_HEIGHT,
+    st.vega_lite_chart(
+        display,
+        overview_chart_spec(display["Chart label"].tolist()),
         width="stretch",
+        theme="streamlit",
     )
     st.caption(CHART_CAPTION)
-    st.dataframe(display, hide_index=True, width="stretch")
+    st.dataframe(
+        display.loc[:, ["Problem", "Findings", "Affected rows"]],
+        hide_index=True,
+        width="stretch",
+    )
 
 
 def _render_issues(issues: pd.DataFrame) -> None:
