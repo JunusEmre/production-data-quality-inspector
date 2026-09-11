@@ -1,7 +1,8 @@
 """Human-readable catalog of production data-quality rules.
 
-This module documents the agreed business rules. It does not execute
-validation; later stages will apply these rules with Pandera and pandas.
+This module is the shared catalog of agreed business rules. Validators read
+these IDs, titles, descriptions, and severities instead of defining a second
+copy. The catalog itself does not execute validation.
 """
 
 from dataclasses import dataclass
@@ -240,3 +241,7 @@ VALIDATION_RULES: tuple[ValidationRule, ...] = (
         columns=("downtime_minutes", "planned_minutes"),
     ),
 )
+
+RULES_BY_ID: dict[str, ValidationRule] = {
+    rule.rule_id: rule for rule in VALIDATION_RULES
+}
